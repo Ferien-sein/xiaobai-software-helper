@@ -139,9 +139,9 @@ def make_shortcut(link_path, target, workdir, icon=None):
 def long_path(path):
     """把 8.3 短路径还原成完整路径。
 
-    为什么需要：命令行传进来的可能是 C:\\Users\\汐仔小~1\\...（短名），
-    卸载时按短名判断目录会对不上。os.path.abspath 不解析短名，
-    要用 Windows 的 GetLongPathNameW。
+    为什么需要：命令行传进来的可能是短名形式（形如
+    C:\\Users\\ABCDEF~1\\AppData\\...），卸载时按短名判断目录会对不上。
+    os.path.abspath 不解析短名，要用 Windows 的 GetLongPathNameW。
     """
     p = os.path.abspath(path)
     if os.name != "nt":
@@ -233,8 +233,8 @@ def install_to(target, items, progress=None, log=print, desktop_shortcut=True):
 
 def write_uninstaller(target, items):
     """在安装目录放一个卸载脚本 + 一个能双击的 .bat。"""
-    # ★ 必须存**长路径**：命令行传进来的可能是 8.3 短名
-    #   （C:\Users\汐仔小~1\...），卸载时按短名判断目录会对不上。
+    # ★ 必须存**长路径**：命令行传进来的可能是 8.3 短名（形如 ABCDEF~1），
+    #   卸载时按短名判断目录会对不上。
     #   注意 long_path 只对**已存在**的路径有效，所以要在文件就位之后调用。
     long_target = long_path(target)
     try:
