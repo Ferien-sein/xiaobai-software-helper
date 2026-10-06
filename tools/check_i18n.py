@@ -19,6 +19,15 @@
 
 用法: python tools/check_i18n.py
 """
+
+import os
+# ★ 锁定界面语言（XBSH_LANG_LOCKED）：这些检查/自检脚本的输出与断言都基于简体中文，
+#   而 i18n 会按系统区域自动探测语言 —— 在英文机器 / CI 上会探测成英文，
+#   断言就全挂（GitHub runner 上真踩过：selftest_platform 11 项失败）。
+#   ★ 用 = 不用 setdefault：环境里已有 XBSH_LANG 时 setdefault 不覆盖，锁会失效。
+#   插在第一个模块级 import 之前，保证任何依赖 i18n 的 import 都在它之后。
+os.environ["XBSH_LANG"] = "zh-CN"
+
 import ast
 import io
 import os
