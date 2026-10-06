@@ -33,7 +33,7 @@
 程序本体（`xiaobai-software-helper`）：
 
 ```powershell
-# 12 个自检，全部应 exit=0
+# 13 个自检，全部应 exit=0
 python tools\selftest_adaptive.py      # 问卷自适应（类型 × 平台）
 python tools\selftest_contrast.py      # 配色对比度（防「文字看不见」）
 python tools\selftest_functional.py    # 主流程
@@ -41,6 +41,7 @@ python tools\selftest_platform.py      # 系统与位数探测
 python tools\selftest_i18n_output.py   # 生成的需求说明是否按语言本地化
 python tools\selftest_ui_scale.py      # 各缩放比例下的布局
 python tools\selftest_scroll.py        # 滚动
+python tools\selftest_wheel.py         # 滚轮路由（指针在哪个区域滚哪个）
 python tools\selftest_pages.py         # 页面切换
 python tools\selftest_lookup.py        # GitHub 查重
 python tools\selftest_lookup_quality.py
@@ -52,6 +53,11 @@ python tools\check_i18n.py             # 三语覆盖率（应为 100%）
 python tools\check_encoding.py .       # 中文编码（应为 0 个有问题）
 python tools\check_option_uniqueness.py
 ```
+
+> ⚠️ 这几个脚本的汇总行格式**不统一**：有的打「通过 N 项，失败 M 项」，
+> 有的只打「=== 全部测试通过 ===」。
+> **判断通过要看 exit code（必须是 0）**，不要只 grep 那个词 ——
+> 用 grep 判断会漏判，也别因为"没看到 N 项"就以为没跑。
 
 > Windows 控制台上跑这些脚本时建议加 `-X utf8`，
 > 或者设 `$env:PYTHONIOENCODING = "utf-8"`，否则中文可能显示成乱码。
