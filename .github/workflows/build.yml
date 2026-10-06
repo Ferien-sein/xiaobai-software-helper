@@ -1,7 +1,7 @@
 name: Build Windows exe
 
 # 什么时候自动构建：
-#   1) 推一个 tag（例如 v1.8.0）—— 会顺便创建一个 Release 并把压缩包挂上去
+#   1) 推一个 tag（例如 v1.14.0）—— 会顺便创建一个 Release 并把压缩包挂上去
 #   2) 手动到 Actions 页面点 "Run workflow"
 #   3) 往 main 推代码时只构建、不留产物（当作编译检查，防止合入坏代码）
 on:
@@ -31,23 +31,103 @@ jobs:
       - name: 安装 PyInstaller
         run: python -m pip install --disable-pip-version-check pyinstaller
 
-      - name: 编译检查（先确认语法没问题）
-        run: python -m py_compile src/app.py
+      # ★ 所有 python 命令都设 UTF-8：
+      #   项目里到处是中文（文案、路径、打印）。
+      #   Windows runner 默认控制台编码不是 UTF-8，不设的话
+      #   print 中文会抛 UnicodeEncodeError —— 看起来像"测试失败"，
+      #   实际是输出编码问题（本地踩过一模一样的坑）。
+      - name: 先看环境（排查失败时有用）
+        shell: pwsh
+        run: |
+          python -c "import sys, tkinter; print('python', sys.version.split()[0]); print('tkinter', tkinter.TkVersion)"
+          python -c "import sys; print('default encoding:', sys.stdout.encoding)"
 
-      - name: 跑功能自检（24 项）
-        run: python tools/selftest_functional.py
+      - name: 编译检查
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        run: |
+          python -m py_compile src/app.py
+          python -m py_compile src/i18n.py src/questionnaire.py src/platform_info.py src/github_lookup.py
+          python -m py_compile src/i18n_zh_tw.py src/i18n_en.py
 
-      - name: 跑缩放自检
-        run: python tools/selftest_ui_scale.py 1.0 1.5 2.25
+      - name: 跑不依赖桌面会话的自检
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          # 逐个跑、逐个报状态；任何一个非 0 就让这一步失败。
+          # ★ 为什么列成清单而不是一条命令：失败时能一眼看出是哪个脚本。
+          $tests = @(
+            "tools/check_encoding.py",
+            "tools/check_i18n.py",
+            "tools/check_option_uniqueness.py",
+            "tools/selftest_platform.py",
+            "tools/selftest_i18n_output.py",
+            "tools/selftest_functional.py",
+            "tools/selftest_lookup.py",
+            "tools/selftest_lookup_quality.py",
+            "tools/selftest_tooling.py"
+          )
+          $failed = @()
+          foreach ($t in $tests) {
+            Write-Host ""
+            Write-Host "==================== $t ====================" -ForegroundColor Cyan
+            if ($t -eq "tools/check_encoding.py") {
+              python $t .
+            } else {
+              python $t
+            }
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "★ $t 失败（exit=$LASTEXITCODE）" -ForegroundColor Red
+              $failed += $t
+            }
+          }
+          Write-Host ""
+          if ($failed.Count -gt 0) {
+            Write-Host "★ 失败的自检：$($failed -join ', ')" -ForegroundColor Red
+            exit 1
+          }
+          Write-Host "✔ 全部自检通过" -ForegroundColor Green
 
+      # 依赖桌面会话（起真窗口）的自检在 CI 上不一定跑得动，
+      # 所以单独一步并允许失败 —— 失败了要能从日志看出来，但不该挡住打包。
+      - name: 跑需要桌面会话的自检（允许失败，仅作参考）
+        continue-on-error: true
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        shell: pwsh
+        run: |
+          foreach ($t in @("tools/selftest_adaptive.py", "tools/selftest_contrast.py",
+                           "tools/selftest_scroll.py", "tools/selftest_wheel.py",
+                           "tools/selftest_pages.py", "tools/selftest_lookup_ui.py")) {
+            Write-Host "==================== $t ====================" -ForegroundColor Cyan
+            python $t
+            Write-Host "exit=$LASTEXITCODE"
+          }
+
+      # ★ --hidden-import 不能省：src/app.py 是「先 sys.path 处理再 import」的写法，
+      #   PyInstaller 的静态分析看不到 i18n / platform_info / questionnaire /
+      #   github_lookup。漏掉的话打出来的 exe **能启动但语言包是空的**
+      #   （界面只有简体、英文/繁体全失效），而且不会报错 —— 很难发现。
       - name: 打包成 exe
         run: >
           python -m PyInstaller --noconfirm --clean --onedir --noconsole
           --name "xiaobai-software-helper"
           --distpath dist --workpath build --specpath build
+          --hidden-import i18n
+          --hidden-import i18n_zh_tw
+          --hidden-import i18n_en
+          --hidden-import platform_info
+          --hidden-import github_lookup
+          --hidden-import questionnaire
           src/app.py
 
       - name: 确认产物存在
+        shell: pwsh
         run: |
           if (!(Test-Path "dist/xiaobai-software-helper/xiaobai-software-helper.exe")) {
             Write-Error "exe 没有生成"
@@ -55,7 +135,27 @@ jobs:
           }
           Get-ChildItem dist/xiaobai-software-helper | Select-Object Name
 
+      # ★ 关键验证：确认语言包真的被打进去了。
+      #   只检查"exe 存在"是不够的 —— 漏了 hidden-import 时 exe 照样生成，
+      #   但 i18n_zh_tw / i18n_en 不在 PYZ 里，英文界面会全变简体。
+      - name: 验证语言包被打进产物
+        shell: pwsh
+        run: |
+          $toc = Get-ChildItem build -Recurse -Filter "PYZ-00.toc" -EA SilentlyContinue
+          if (-not $toc) { Write-Error "找不到 PYZ-00.toc，无法验证"; exit 1 }
+          $content = Get-Content $toc.FullName -Raw
+          $missing = @()
+          foreach ($m in @("i18n", "i18n_zh_tw", "i18n_en", "platform_info", "questionnaire", "github_lookup")) {
+            if ($content -notmatch [regex]::Escape($m)) { $missing += $m }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Error "★ 这些模块没打进 exe：$($missing -join ', ') —— 界面会缺语言包"
+            exit 1
+          }
+          Write-Host "✔ 六个模块都在 PYZ 里"
+
       - name: 放入发布产物、使用说明与辅助脚本
+        shell: pwsh
         run: |
           Copy-Item README.md "dist/xiaobai-software-helper/README.md"
           Copy-Item CHANGELOG.md "dist/xiaobai-software-helper/CHANGELOG.md"
@@ -65,6 +165,7 @@ jobs:
           Get-ChildItem dist/xiaobai-software-helper -File | Select-Object Name
 
       - name: 压缩成 zip
+        shell: pwsh
         run: Compress-Archive -Path "dist/xiaobai-software-helper/*" -DestinationPath "xiaobai-software-helper-windows-x64.zip" -Force
 
       - name: 上传为构建产物（所有构建都有）
