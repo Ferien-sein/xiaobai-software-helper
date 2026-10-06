@@ -132,12 +132,76 @@ def t_out_of_range_falls_back():
     gui._select_page(99)
     root.update_idletasks()
     assert shown_pages() == ["fill"], "越界索引应退回首页，实际 %s" % shown_pages()
-    gui.select_page_by_key("nonexistent")
+
+
+check("越界索引退回首页", t_out_of_range_falls_back)
+
+
+def t_select_by_key_returns_bool():
+    """★ 回归：select_page_by_key 必须**返回是否成功**，且认不出来时不改变页面。
+
+    真事故（两回）：
+      1. show_about() 用索引 2，插页后静默打开成「历史记录」
+      2. 它内部把无法识别的名字**静默回退到第一页** ——
+         于是调 select_page_by_key("先查查") 返回 None、停在首页；
+         XBSH_PAGE 传页名时正是这样，截图截成了「填写需求」页。
+    现在的约定：认不出来 → 返回 False 且**保持当前页不变**。
+    """
+    assert gui.select_page_by_key("about") is True
     root.update_idletasks()
-    assert shown_pages() == ["fill"], "未知页面名应退回首页"
+    before = shown_pages()
+    assert before == ["about"]
+    for bad in ("nonexistent", "先查查查", ""):
+        got = gui.select_page_by_key(bad)
+        root.update_idletasks()
+        assert got is False, "未知名字 %r 应返回 False，实际 %r" % (bad, got)
+        assert shown_pages() == before, \
+            "未知名字 %r 不该改变当前页（%s → %s）" % (bad, before, shown_pages())
 
 
-check("越界索引 / 未知页面名退回首页", t_out_of_range_falls_back)
+check("未知页面名返回 False 且不改变当前页", t_select_by_key_returns_bool)
+
+
+def t_select_by_chinese_display_name():
+    """★ 回归：用**中文页名**也要能定位。
+
+    为什么需要：截图脚本、自检、XBSH_PAGE 用中文名更自然；
+    而界面切到英文后 PAGES 是英文显示名，容易踩「名字对不上、
+    还静默回退到第一页」。
+    """
+    want = {"填写需求": "fill", "先查查": "lookup",
+            "历史记录": "history", "使用说明": "about"}
+    wrong = []
+    for label, key in want.items():
+        ok = gui.select_page_by_key(label)
+        root.update_idletasks()
+        got = shown_pages()
+        if not ok or got != [key]:
+            wrong.append("%s → 返回 %s，实际显示 %s（期望 %s）" % (label, ok, got, key))
+    assert not wrong, "中文页名定位失败：\n       " + "\n       ".join(wrong)
+
+
+check("用中文页名能定位到正确的页", t_select_by_chinese_display_name)
+
+
+def t_page_keys_are_stable():
+    """内部 key 与显示名必须分开：显示名随语言变，key 不能变。"""
+    assert A.App.PAGE_KEYS == EXPECTED, \
+        "PAGE_KEYS 变了：%s（会影响所有按 key 指页面的地方）" % (A.App.PAGE_KEYS,)
+    assert len(A.App.PAGE_KEYS) == len(A.App.PAGES), "PAGE_KEYS 与 PAGES 数量不一致"
+    # 任何语言的显示名都不该等于某个内部 key，否则用显示名会选错页
+    saved = gui.page_index
+    for loc in A.i18n.LANGS:
+        A.i18n.set_lang(loc)
+        for lb in A.App.PAGES:
+            t_lb = A.i18n.t(lb)
+            assert t_lb not in A.App.PAGE_KEYS, \
+                "[%s] 显示名 %r 与内部 key 撞名，用显示名会选错页" % (loc, t_lb)
+    A.i18n.set_lang("zh-CN")
+    gui.page_index = saved
+
+
+check("内部 key 稳定、任何语言的显示名都不与 key 撞名", t_page_keys_are_stable)
 
 
 def t_nav_highlight_matches():

@@ -1898,20 +1898,56 @@ class App:
         key = keys[index] if 0 <= index < len(keys) else "fill"
         self._show_page(key, index)
 
+    # 页面 key（内部用）与显示名（PAGES）的对应。
+    # ★ 两者必须分开：PAGES 是**会随语言变**的显示名，
+    #   key 是稳定标识。早先 select_page_by_key 只认 key，
+    #   于是拿中文页名去调它会**静默回退到第一页** —— 又是
+    #   「不报错、只是打开错的页」这个老毛病换了个地方复发。
+    PAGE_KEYS = ("fill", "lookup", "history", "about")
+
     def select_page_by_key(self, key):
-        """按页面名切换。
+        """按页面名或 key 切换。**返回是否成功**。
 
         为什么要有这个入口：**索引会随插页而位移**。
         新增「先查查」页后，原来 show_about() 里的 _select_page(2)
         就从「使用说明」变成了「历史记录」，而且不报错、只是打开错的页。
         凡是"指到某一页"的地方都应按名字来。
+
+        接受的输入（按顺序尝试）：
+          · 内部 key：fill / lookup / history / about
+          · 当前语言的显示名：填写需求 / 先查查 / …
+          · 简体中文显示名：即使界面切到英文，用中文名也能定位
+            （自检、截图脚本、XBSH_PAGE 用中文更自然）
+
+        ★ 认不出来时**返回 False 且什么都不做**，不再静默跳到第一页 ——
+          静默回退会让调用方以为成功了（真踩过）。
         """
-        keys = ("fill", "lookup", "history", "about")
-        if key not in keys:
-            key = "fill"
-        idx = keys.index(key)
+        keys = list(self.PAGE_KEYS)
+        want = str(key or "").strip()
+        if want in keys:
+            idx = keys.index(want)
+            page_key = want
+        else:
+            # 显示名 → key 的映射。同时放「当前语言的显示名」和
+            # 「简体中文出厂名单」，这样界面切到英文后用中文名也能定位。
+            name_to_key = {}
+            for i, pk in enumerate(keys):
+                try:
+                    label = self.PAGES[i]
+                except (IndexError, TypeError):
+                    label = None
+                if label:
+                    name_to_key[str(label)] = pk
+            # 简体中文出厂名（与 _build_sidebar 里的 PAGES 定义一致）
+            for label, pk in zip(("填写需求", "先查查", "历史记录", "使用说明"), keys):
+                name_to_key.setdefault(label, pk)
+            page_key = name_to_key.get(want)
+            if page_key is None:
+                return False
+            idx = keys.index(page_key)
         self.page_index = idx
-        self._show_page(key, idx)
+        self._show_page(page_key, idx)
+        return True
 
     def _show_page(self, key, index):
         for name, frame in getattr(self, "pages", {}).items():
@@ -3210,12 +3246,25 @@ def main():
 
     app = App(root)
     # 允许用环境变量指定打开哪一页（截图脚本用；正常启动不受影响）
+    #
+    # ★ 支持**页名**也支持索引，页名优先。
+    #   页面索引会随插入新页而漂移（加了「先查查」之后，原来的 1
+    #   从「历史记录」变成了「先查查」），用索引会静默打开错的页 ——
+    #   实测踩过：show_about() 用索引 2，插页后跳到了「历史记录」。
     _page = os.environ.get("XBSH_PAGE")
     if _page is not None:
-        try:
-            app._select_page(max(0, min(len(App.PAGES) - 1, int(_page))))
-        except (TypeError, ValueError):
-            pass
+        _spec = _page.strip()
+        _done = False
+        if not _spec.lstrip("-").isdigit():
+            try:
+                _done = bool(app.select_page_by_key(_spec))
+            except Exception:  # noqa: BLE001  名字不认识就当没指定
+                _done = False
+        if not _done:
+            try:
+                app._select_page(max(0, min(len(App.PAGES) - 1, int(_spec))))
+            except (TypeError, ValueError):
+                pass
     app.set_status(t("显示大小 %d%%（Windows 推荐 %d%%；侧栏底部可调大小、可看诊断）")
                    % (int(round(scale * 100)), int(round(recommended * 100))))
     app.set_status(app.status.cget("text") + t("；字号「%s」") % app._boost_label())
