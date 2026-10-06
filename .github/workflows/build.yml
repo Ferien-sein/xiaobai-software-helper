@@ -1,0 +1,89 @@
+name: Build Windows exe
+
+# 什么时候自动构建：
+#   1) 推一个 tag（例如 v1.8.0）—— 会顺便创建一个 Release 并把压缩包挂上去
+#   2) 手动到 Actions 页面点 "Run workflow"
+#   3) 往 main 推代码时只构建、不留产物（当作编译检查，防止合入坏代码）
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 取出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 PyInstaller
+        run: python -m pip install --disable-pip-version-check pyinstaller
+
+      - name: 编译检查（先确认语法没问题）
+        run: python -m py_compile src/app.py
+
+      - name: 跑功能自检（24 项）
+        run: python tools/selftest_functional.py
+
+      - name: 跑缩放自检
+        run: python tools/selftest_ui_scale.py 1.0 1.5 2.25
+
+      - name: 打包成 exe
+        run: >
+          python -m PyInstaller --noconfirm --clean --onedir --noconsole
+          --name "xiaobai-software-helper"
+          --distpath dist --workpath build --specpath build
+          src/app.py
+
+      - name: 确认产物存在
+        run: |
+          if (!(Test-Path "dist/xiaobai-software-helper/xiaobai-software-helper.exe")) {
+            Write-Error "exe 没有生成"
+            exit 1
+          }
+          Get-ChildItem dist/xiaobai-software-helper | Select-Object Name
+
+      - name: 放入发布产物、使用说明与辅助脚本
+        run: |
+          Copy-Item README.md "dist/xiaobai-software-helper/README.md"
+          Copy-Item CHANGELOG.md "dist/xiaobai-software-helper/CHANGELOG.md"
+          Copy-Item LICENSE "dist/xiaobai-software-helper/LICENSE"
+          Copy-Item packaging/launch.bat "dist/xiaobai-software-helper/launch.bat"
+          Copy-Item packaging/unblock.bat "dist/xiaobai-software-helper/unblock.bat"
+          Get-ChildItem dist/xiaobai-software-helper -File | Select-Object Name
+
+      - name: 压缩成 zip
+        run: Compress-Archive -Path "dist/xiaobai-software-helper/*" -DestinationPath "xiaobai-software-helper-windows-x64.zip" -Force
+
+      - name: 上传为构建产物（所有构建都有）
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaobai-software-helper-windows-x64
+          path: xiaobai-software-helper-windows-x64.zip
+          if-no-files-found: error
+
+      - name: 打 tag 时创建 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: xiaobai-software-helper-windows-x64.zip
+          generate_release_notes: true
+          body: |
+            下载下面的 zip，解压后双击 `xiaobai-software-helper.exe` 即可使用。
+
+            首次打开如果出现「Windows 已保护你的电脑」，
+            点「更多信息」→「仍要运行」；或先双击文件夹里的 `unblock.bat`。
+
+            注意：解压后的文件夹要整体保留，`_internal` 不能删。

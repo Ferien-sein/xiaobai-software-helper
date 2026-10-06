@@ -1,0 +1,34 @@
+# 统一换行符：仓库里一律 LF，检出到 Windows 时也不自动改动。
+#
+# 为什么必须写这个：项目里有 .bat（必须 CRLF/纯 ASCII）、
+# 还有大量含中文的 .py/.md（必须是 UTF-8）。
+# 不声明的话，git 可能按系统设置改动换行符，
+# 于是 .bat 会坏、中文文件会整篇「被改过」，diff 全是噪音。
+* text=auto eol=lf
+
+# Windows 批处理必须是 CRLF，否则某些情况下执行会出问题
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell 脚本也用 CRLF（Windows 上的习惯）
+*.ps1 text eol=crlf
+
+# 图片是二进制，不要做任何换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+
+# 可执行文件/压缩包
+*.exe binary
+*.dll binary
+*.zip binary
+*.7z binary
+
+# 明确标记为二进制并禁止 diff（避免 git 尝试按文本处理）
+*.pyd binary
+
+# 语言统计：把生成/第三方目录排除，免得 GitHub 上的语言比例失真
+tools/_archive/** linguist-vendored
+assets/*.png linguist-generated

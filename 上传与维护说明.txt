@@ -1,0 +1,121 @@
+如何把这份代码传上 GitHub（给不熟悉 git 的人）
+==================================================
+
+你手上这个文件夹（xiaobai-software-helper）已经是一个标准仓库结构了，
+只差"传上去"这一步。下面两条路，选一条就行。
+
+
+────────────────────────────────────────────────
+路线一：GitHub Desktop（推荐，最省事）
+────────────────────────────────────────────────
+
+1. 下载安装 GitHub Desktop
+   https://desktop.github.com/
+   （免费，自带 git，不用你另外装东西）
+
+2. 打开它，用你的 GitHub 账号登录（没有就先注册一个）
+
+3. 菜单 File → Add local repository…
+   选择这个文件夹：E:\APP\GitHub\xiaobai-software-helper
+
+4. 它会提示"这不是一个 git 仓库"，点那个蓝色的
+   "create a repository" 链接，然后点 Create repository
+
+5. 右上角会出现 "Publish repository" 按钮，点它
+   · Name 保持 xiaobai-software-helper
+   · 如果不想让别人看到，勾上 "Keep this code private"
+   · 点 Publish repository
+
+   → 代码就上去了
+
+以后每次改完代码，只要在左下角填一句说明（例如"修了滚动残影"），
+点 "Commit to main"，再点 "Push origin"，就更新上去了。
+
+
+────────────────────────────────────────────────
+路线二：不装任何软件，用网页上传
+────────────────────────────────────────────────
+
+1. 打开 https://github.com/new 新建一个仓库
+   · Repository name 填 xiaobai-software-helper
+   · 选 Public（公开）或 Private（私有）
+   · 不要勾 "Add a README file"（我们已经有 README 了）
+   · 点 Create repository
+
+2. 在新仓库页面点 "uploading an existing file"
+
+3. 打开你的文件夹，把里面【所有文件和文件夹】选中，
+   拖进网页的上传区域
+   （注意：.github 和 .gitignore 是隐藏项，要先在
+     文件资源管理器里勾上"显示隐藏的项目"）
+
+4. 底部填一句说明，点 Commit changes
+
+网页方式的限制：一次最多 100 个文件；以后改代码要重新拖一遍，
+比较麻烦。所以只是偶尔上传的话用这条，长期维护还是用路线一。
+
+
+────────────────────────────────────────────────
+上传之后：自动构建 exe（已经配好了，不用你做）
+────────────────────────────────────────────────
+
+仓库里带了 .github/workflows/build.yml，它会：
+
+· 你往 main 分支推代码时 —— 自动编译 + 跑自检（当"体检"，防止推坏代码）
+· 你打一个版本标签（例如 v1.8.0）时 —— 自动打包出 exe，
+  并创建一个 Release 供别人下载
+
+打标签的方法（GitHub Desktop）：
+  菜单 History → 右键最新那次提交 → Create tag…
+  填 v1.8.0 → 然后 Push origin
+
+打完之后去仓库的 Actions 页面能看到构建进度，
+构建完成在 Releases 页面就能下载
+xiaobai-software-helper-windows-x64.zip
+
+
+────────────────────────────────────────────────
+维护要点（记住这几条就够了）
+────────────────────────────────────────────────
+
+· 【只改源码，不改产物】exe、_internal、build/、dist/ 都不进仓库，
+  别人下载源码后自己用 build.bat 打包，或者从 Releases 下载现成的。
+
+· 【别提交这两样】
+    src/config.json      （你自己的显示设置，别人不需要）
+    src/需求存档/         （你自己填过的需求内容，可能含私密信息）
+  这两样已经写进 .gitignore，正常情况下不会误传。
+
+· 【改了代码先跑自检】
+    python tools\selftest_functional.py
+  全绿再提交。
+
+· 【改了界面先截图核对】
+    python tools\screenshot.py dark
+  图会存到 assets\，你自己看一眼再提交。
+
+· 【版本号和 CHANGELOG 一起改】
+  APP_VERSION 在 src\app.py 顶部；CHANGELOG.md 里加一节。
+
+
+────────────────────────────────────────────────
+常见问题
+────────────────────────────────────────────────
+
+Q：为什么仓库里没有 exe？
+A：exe 是编译产物（29MB，其中 29MB 都是 Python 运行时），
+   不放进版本库是标准做法 —— 否则仓库克隆极慢，二进制也没法审阅。
+   Releases 页面有自动构建好的，别人下载就能用。
+
+Q：别人能直接跑吗？
+A：能。装了 Python 就 `python src/app.py`；
+   不想装就从 Releases 下 zip。
+
+Q：我以后想改，改哪里？
+A：主程序只有 src\app.py 一个文件，
+   顶部是配置和配色（THEMES），中间是 12 个问题的定义（QUESTIONS），
+   后面是界面和生成逻辑。改文字基本都在 QUESTIONS 那一块。
+
+Q：上传后想删掉某些历史提交怎么办？
+A：那就不是"小白"范围了，建议先新建一个分支试，
+   或者直接把仓库删了重建（反正源码在本机，重传一次就行）。
